@@ -1,0 +1,209 @@
+---
+title: "dnajc6 behaviour"
+author: "Angel Allen"
+date: "2022-11-13"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = FALSE)
+```
+
+### Packages
+
+```{r packages, message=F}
+# importing the data
+library(readxl) # import
+library(tidyverse) # import
+
+# visualisation
+library(ggplot2) # ggplot()
+library(ggpubr) # ggarrange()
+library(ggfortify)
+library(ggrepel)
+library(GGally) # ggpairs()
+library(kableExtra)
+# library(esquisse)
+
+# data manipulation
+library(psych) #principal()
+library(rcompanion) # transformTukey()
+# library(broom) # augment()
+
+theme_set(theme_bw()) # set ggplot to b/w
+# options(scipen = 100) # set to 0 to go back to scientific notation
+# rm(list = ls())
+```
+
+### Importing data
+
+```{r import}
+source("scripts/import.R")
+source("scripts/DE functions.R")
+source("scripts/graphs.R")
+
+bad_fish <- c("2.2-6.10", "56.2-6.10", "5.2-6.10", "71.4-7.10", "5.4-7.10")
+              # ,"38.4-7.10", "4.2-6.10") # last one just outlier (testing)
+
+raw_11 <- read_data("11-Oct-22") %>% subset(.$fish_id %in% grep("6.10", .$fish_id, value = T))
+
+raw_11 <- raw_11[!raw_11$fish_id %in% bad_fish,]
+
+raw_12 <- read_data("12-Oct-22") %>% subset(.$fish_id %in% grep("7.10", .$fish_id, value = T))
+
+raw_12 <- raw_12[!raw_12$fish_id %in% bad_fish,]
+
+raw_all <- bind_rows(raw_11, raw_12, .id = "Family")
+```
+
+```{r labels}
+labels <- read.csv("files/labels.csv")
+labels[grep("Acceleration", labels$Feature),"units"] <- "mm/s$^2$"
+```
+
+# Data exploration
+
+```{r variables}
+expl <- colnames(raw_all)[c(1:8)]
+expl2 <- colnames(raw_all)[c(2:8)]
+vars <- colnames(raw_all)[-c(1:8)]
+```
+
+## Summary statistics
+
+```{r summary stats}
+do.call(cbind, lapply(raw_all[,c(vars)], summary)) %>%
+  t() %>% kable() %>%
+  kable_styling()
+```
+
+## Distributions
+
+```{r distributions}
+plots <- lapply(vars, plot_histbox, data = raw_all, labels = labels)
+ggarrange(plotlist = plots, ncol = 2, common.legend = T)
+```
+
+### Notes
+
+* Most variables have a strongly right skewed distribution, including distance travelled (total, mean and variance), velocity (mean and variance), acceleration (max and variance, min is strongly left skewed), frequency moving, mean time in the middle
+* The time in middle (total) has a right skewed smooth distribution, but there are many observations that fall at 0 or 1 (didn't go in the middle at all, or spent all of their time in the middle).
+* The peak on the left (at 0) followed by the right skewed distribution is called a "zero inflated gamma/poisson" distribution.
+* There is one extreme outlier for time in the middle (variance). Further investigation showed that there are actually 2, with values of 8.88178e+16 and 1.77636e+15 compared to the next highest value of 1.73107e+03. The values belong to fish 38.4-7.10 and 4.2-6.10 in trials 10 and 1 respectively.
+* The distance to middle (variance) and frequency moving appear to have a bimodal distribution. I think this may be due to the differences between the light and dark periods.
+
+# Scores
+
+I'll be using all variables other than the variances to make a locomotor and anxiety score for each fish. I'll then average these scores for each fis across the light or dark period.
+
+```{r features}
+mvars <- colnames(raw_all)[c(9,10,12,14:17,26:33)]
+avars <- colnames(raw_all)[c(19:21,23,24)]
+```
+
+```{r pairplot}
+# p1 <- ggpairs(raw_all[,-c(1:8)])
+# 
+# p2 <- ggpairs(raw_all[,mvars])
+# p3 <- ggpairs(raw_all[,avars])
+# 
+# p4 <- ggpairs(raw_11[,-c(1:7)])
+# p5 <- ggpairs(raw_12[,-c(1:7)])
+# 
+# p6 <- ggpairs(raw_11[,c("Genotype", mvars)], aes(colour = Genotype, alpha = 0.5))
+# p7 <- ggpairs(raw_12[,c("Genotype", mvars)], aes(colour = Genotype, alpha = 0.5))
+# 
+# p8 <- ggpairs(raw_11[,c("Genotype", avars)], aes(colour = Genotype, alpha = 0.5))
+# p9 <- ggpairs(raw_12[,c("Genotype", avars)], aes(colour = Genotype, alpha = 0.5))
+# 
+# ggsave("plots/raw_11 mvars pairplot.png", p6)
+# ggsave("plots/raw_12 mvars pairplot.png", p7)
+# ggsave("plots/raw_11 avars pairplot.png", p8)
+# ggsave("plots/raw_12 avars pairplot.png", p9)
+```
+
+```{r light dark}
+dark_bins <- c(6:10)
+
+raw_dark <- raw_all %>% subset(Bin %in% dark_bins)
+```
+
+```{r motor score}
+mscore <- principal(raw_dark[,mvars])$scores %>% as.numeric()
+
+raw_dark$mscore <- mscore
+```
+
+```{r anxiety score}
+ascore <- principal(raw_dark[,avars])$scores %>% as.numeric()
+
+raw_dark$ascore <- ascore
+```
+
+```{r plot scores}
+ggplot(raw_dark, aes(x = mscore, y = ascore, colour = Genotype)) +
+  geom_point(aes(shape = Family), size = 2) +
+  stat_ellipse(size = 1)
+```
+
+```{r overall score}
+score <- principal(raw_dark[,vars])$scores %>% as.numeric()
+raw_dark$score <- score
+
+ggplot(raw_dark) +
+  geom_boxplot(aes(x = Genotype, y = score, fill = Genotype), alpha = 0.5)
+  # geom_point(aes(x = mscore, y = ascore, colour = Genotype))
+```
+
+```{r pca}
+pca <- raw_dark[,vars] %>%
+  prcomp(scale. = T, rank. = 2)
+pca_all <- cbind(raw_dark, pca$x[,c("PC1", "PC2")]) %>% as_tibble
+
+ggplot(pca_all, aes(x = PC1, y = PC2, colour = Genotype)) +
+  geom_point(aes(colour = Genotype, shape = Family), size = 3) +
+  stat_ellipse(size = 1)
+  # geom_text_repel(aes(label = fish_id))
+```
+
+These look cool :)
+I'm going to average the scores for each fish now and see what that does.
+
+```{r average scores}
+mean_dark <- raw_dark %>%
+  group_by(fish_id, Family, Genotype, Trial) %>%
+  summarise_if(is.numeric, mean)
+```
+
+```{r score boxplots}
+a <- ggplot(mean_dark) +
+  geom_boxplot(aes(x = Genotype, y = mscore, fill = Genotype), alpha = 0.5)
+
+b <- ggplot(mean_dark) +
+  geom_boxplot(aes(x = Genotype, y = ascore, fill = Genotype), alpha = 0.5)
+
+c <- ggplot(mean_dark) +
+  geom_boxplot(aes(x = Genotype, y = score, fill = Genotype), alpha = 0.5)
+
+ggarrange(a, b, c, common.legend = T)
+```
+
+```{r figure}
+a <- boxplot_data(mean_dark, "mscore")
+
+b <- boxplot_data(mean_dark, "ascore")
+
+c <- boxplot_data(mean_dark, "score")
+
+ggarrange(a, b, c, common.legend = T)
+```
+
+
+
+

@@ -1,0 +1,352 @@
+---
+title: "Data Exploration"
+author: "Angel Allen"
+date: "2022-11-07"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = FALSE)
+```
+
+```{r packages, message=F}
+# importing the data
+library(readxl) # import
+library(tidyverse) # import
+
+# visualisation
+library(ggplot2) # ggplot()
+library(ggpubr) # ggarrange()
+library(ggfortify)
+library(kableExtra)
+
+# data manipulation
+library(rcompanion) # tukeyTransform()
+
+# library(psych) #principal()
+
+# library(esquisse)
+
+theme_set(theme_bw()) # set ggplot to b/w
+# rm(list = ls())
+```
+
+Importing data:
+```{r import}
+source("scripts/import.R")
+
+raw_7 <- read_data("11-Oct-22") %>% subset(.$fish_id %in% grep("2.10", .$fish_id, value = T))
+
+raw_11 <- read_data("11-Oct-22") %>% subset(.$fish_id %in% grep("6.10", .$fish_id, value = T))
+
+raw_12 <- read_data("12-Oct-22") %>% subset(.$fish_id %in% grep("7.10", .$fish_id, value = T))
+
+raw_all <- full_join(raw_11, raw_12)
+```
+
+# Introduction
+
+Zuur - Analysis of Ecological Data
+
+Questions to answer:
+1. Where are the data centered? How are they spread? Are they symmetric, skewed, bimodal?
+2. Are there outliers?
+3. Are the variables normally distributed>
+4. Are there any relationships between the variables? **Are relationships between the variables linear?** Which follow-up analysis should be applied?
+5. Do we need a transformation?
+6. Was the sampling effort approximately the same for each observation or variable?
+
+# Variables
+
+There are 7 explanatory and 25 response variables.
+
+```{r variables}
+variables <- data.frame(
+  Name = colnames(raw_all),
+  Variable = c(rep("Explanatory", 7), rep("Response", 25)),
+  Type = c(rep("Nominal", 3), rep("Ordinal", 4), rep("Continuous", 6), "Discrete", rep("Continuous", 3), "Discrete", rep("Continuous", 14))
+)
+
+colnames(raw_all)
+```
+
+# Visualisation
+
+Here I'm going to visualise each continuous variable to see the distribution of them.
+
+## Distance travelled
+
+### Summary statistics
+
+```{r dt stats}
+feats <- grep("Dist_travelled", colnames(raw_all), value = T)
+
+do.call(cbind, lapply(raw_all[,c(feats)], summary)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+### Plots
+
+```{r dt plots}
+source("scripts/DE functions.R")
+
+lambdas <- rbind(get_lambda(raw_11), get_lambda(raw_12))
+
+lambdas %>% `rownames<-`(c("11 Oct", "12 Oct")) %>% kable() %>%
+  kable_styling()
+
+# dt_all <- select(raw_all, 1:7, all_of(feats)) %>%
+#   mutate_at(feats[1], function(x){log(x + 1)}) %>%
+#   mutate_at(feats[2], function(x){x^0.25}) %>%
+#   mutate_at(feats[3], function(x){x^0.2})
+
+dt_11 <- select(raw_11, 1:7, all_of(feats)) %>%
+  mutate_at(feats[1], function(x){log(x + 1)}) %>%
+  mutate_at(feats[2], function(x){x^0.25}) %>%
+  mutate_at(feats[3], function(x){x^0.2})
+
+dt_12 <- select(raw_12, 1:7, all_of(feats)) %>%
+  mutate_at(feats[1], function(x){log(x + 1)}) %>%
+  mutate_at(feats[2], function(x){x^0.325}) %>%
+  mutate_at(feats[3], function(x){x^0.225})
+
+plots_11 <- lapply(feats, plot_histbox, data = dt_11)
+plots_12 <- lapply(feats, plot_histbox, data = dt_12)
+plots <- c(rbind(plots_11, plots_12))
+
+ggarrange(plotlist = plots, ncol = 2)
+```
+
+The original plots showed an extreme right skew for the total, mean, and variance of the distance travelled (mm). A log(x+1) transformation made the distribution of total distance travelled much less skewed, and bimodal. The other two (mean and variance) were still severely right skewed with a log transformation, so I used `transformTukey()` to perform Tukey's Ladder of Powers. As this function takes a maximum sample size of 5,000, I ran it separately for the 11 and 12 Oct data. The mean distance travelled was `^0.25` and the variance `^0.2`.
+
+Now I'm going to look at lattice graphs for each of the explanatory variables: genotype, (well) position, tray, trial/time, and bin.
+
+### Genotype
+```{r dt genotype}
+plots_11 <- lapply(feats, plot_histbox, data = dt_11, wrap = "Genotype")
+plots_12 <- lapply(feats, plot_histbox, data = dt_12, wrap = "Genotype")
+plots <- c(rbind(plots_11, plots_12))
+
+plots
+```
+
+### Tray
+```{r dt tray}
+plots_11 <- lapply(feats, plot_histbox, data = dt_11, wrap = "Tray")
+plots_12 <- lapply(feats, plot_histbox, data = dt_12, wrap = "Tray")
+plots <- c(rbind(plots_11, plots_12))
+
+plots
+```
+
+### Trial
+```{r dt trial}
+plots_11 <- lapply(feats, plot_histbox, data = dt_11, wrap = "Trial")
+plots_12 <- lapply(feats, plot_histbox, data = dt_12, wrap = "Trial")
+plots <- c(rbind(plots_11, plots_12))
+
+plots
+```
+
+### Bin
+```{r dt bin}
+plots_11 <- lapply(feats, plot_histbox, data = dt_11, wrap = "Bin")
+plots_12 <- lapply(feats, plot_histbox, data = dt_12, wrap = "Bin")
+plots <- c(rbind(plots_11, plots_12))
+
+plots
+```
+
+The plots wrapped by time bin show that the bimodality is due to the change in movement over time. Due to this, I will be separating the raw data into movement in the light (time bins 1, 2, 3, 4, and 5) and in the dark (time bins 6, 7, 8, 9, and 10).
+
+## Light
+
+```{r light}
+light_bins <- c(1, 2, 3, 4, 5)
+
+raw_light_11 <- raw_11 %>% subset(Bin %in% light_bins)
+raw_light_12 <- raw_12 %>% subset(Bin %in% light_bins)
+
+lambdas <- rbind(getLambda(raw_light_11), getLambda(raw_light_12))
+
+lambdas %>% `rownames<-`(c("11 Oct", "12 Oct")) %>% kable() %>%
+  kable_styling()
+
+dtlight_11 <- select(raw_light_11, 1:7, all_of(feats)) %>%
+  mutate_at(feats[1], function(x){x^0.2}) %>%
+  mutate_at(feats[2], function(x){x^0.2}) %>%
+  mutate_at(feats[3], function(x){x^0.15})
+
+dtlight_12 <- select(raw_light_12, 1:7, all_of(feats)) %>%
+  mutate_at(feats[1], function(x){x^0.225}) %>%
+  mutate_at(feats[2], function(x){x^0.225}) %>%
+  mutate_at(feats[3], function(x){x^0.15})
+
+plots_11 <- lapply(feats, plot_histbox, data = dtlight_11)
+plots_12 <- lapply(feats, plot_histbox, data = dtlight_12)
+
+ggarrange(plotlist = plots_11, ncol = 3)
+ggarrange(plotlist = plots_12, ncol = 3)
+```
+
+### Genotype
+```{r dt light genotype}
+plots_11 <- lapply(feats, plot_histbox, data = dtlight_11, wrap = "Genotype")
+plots_12 <- lapply(feats, plot_histbox, data = dtlight_12, wrap = "Genotype")
+plots <- c(rbind(plots_11, plots_12))
+
+ggarrange(plotlist = plots_11, ncol = 3)
+ggarrange(plotlist = plots_12, ncol = 3)
+```
+
+## Dark
+
+```{r}
+dark_bins <- c(6, 7, 8, 9, 10)
+
+raw_dark_11 <- raw_11 %>% subset(Bin %in% dark_bins)
+raw_dark_12 <- raw_12 %>% subset(Bin %in% dark_bins)
+
+lambdas <- rbind(getLambda(raw_dark_11), getLambda(raw_dark_12))
+
+lambdas %>% `rownames<-`(c("11 Oct", "12 Oct")) %>% kable() %>%
+  kable_styling()
+
+dtdark_11 <- select(raw_dark_11, 1:7, all_of(feats)) %>%
+  mutate_at(feats[1], function(x){x^0.2}) %>%
+  mutate_at(feats[2], function(x){x^0.2}) %>%
+  mutate_at(feats[3], function(x){x^0.15})
+
+dtdark_12 <- select(raw_dark_12, 1:7, all_of(feats)) %>%
+  mutate_at(feats[1], function(x){x^0.225}) %>%
+  mutate_at(feats[2], function(x){x^0.225}) %>%
+  mutate_at(feats[3], function(x){x^0.15})
+
+plots_11 <- lapply(feats, plot_histbox, data = dtdark_11)
+plots_12 <- lapply(feats, plot_histbox, data = dtdark_12)
+
+ggarrange(plotlist = plots_11, ncol = 3)
+ggarrange(plotlist = plots_12, ncol = 3)
+```
+
+### Genotype
+```{r dt dark genotype}
+plots_11 <- lapply(feats, plot_hist, data = dtdark_11, wrap = "Genotype")
+plots_12 <- lapply(feats, plot_hist, data = dtdark_12, wrap = "Genotype")
+plots <- c(rbind(plots_11, plots_12))
+
+ggarrange(plotlist = plots_11, ncol = 3)
+ggarrange(plotlist = plots_12, ncol = 3)
+```
+
+### Summary
+```{r dt dark geno summary}
+get_summary <- function(data) {
+ do.call(cbind, lapply(data[,c(feats)], summary))
+}
+
+dtdark_geno_11 <- group_split(dtdark_11, Genotype)
+
+lapply(dtdark_geno_11, get_summary) %>%
+  kable() %>% kable_styling()
+```
+
+Pairplots to see the relationship between all variables.
+
+```{r pairplots}
+variances <- colnames(raw_12)[grep("var", colnames(raw_12))]
+
+pvars <- colnames(raw_12)[!colnames(raw_12) %in% variances]
+
+pairs_12 <- pairs(raw_12[,pvars])
+```
+
+
+
+```{r}
+
+# mydata <- read.csv("Fish_data.csv", header = TRUE)
+# 
+# 
+# 
+# mydata_dark <- mydata %>% 
+#   dplyr::filter(Bin == 5| Bin == 6 | Bin == 7 | Bin == 8 | Bin == 9)
+# 
+# mydata_dark$Genotype <- factor(mydata_dark$Genotype, levels = c("wt", "het", "hom"))
+# 
+# mydata_dark$Exclude <- 0
+# mydata_dark$Exclude[mydata_dark$Locomotor_dark > 3] <- 1
+# 
+# mydata_dark <- mydata_dark %>% 
+#   dplyr::filter(Exclude == 0)
+# 
+# ####PCA's####
+# #Locomotor Score 
+# 
+# 
+# pca1 <- principal(mydata_dark[,c(8:17, 25:27 ),],nfactors=1,rotate="none")
+# pca1
+# mydata_dark$Locomotor_dark <- pca1$scores
+# 
+# mydata_dark$Locomotor_dark <- as.numeric(mydata_dark$Locomotor_dark)
+# 
+# summary(mydata_dark$Locomotor_dark)
+# 
+# ggplot(mydata_dark) +
+#   aes(x = Genotype, y = Locomotor_dark, fill = Genotype) +
+#   geom_boxplot(shape = "circle") +
+#   scale_fill_brewer(palette = "Blues", direction = 1) +
+#   labs(y = "Locomotor Score", title = "Dark Condition") +
+#   theme_minimal() +
+#   theme(legend.position = "none")
+# 
+# 
+# # Anxiety Score 
+# 
+# pca2 <- principal(mydata_dark[,c(19:24 ),],nfactors=1,rotate="none")
+# pca2
+# mydata_dark$Anxiety_dark <- pca2$scores
+# 
+# mydata_dark$Anxiety_dark <- as.numeric(mydata_dark$Anxiety_dark)
+#  summary(mydata_dark$Anxiety_dark)
+#  
+#  tukey <- mydata_dark %>% tukey_hsd(Anxiety_dark ~ Genotype) %>% adjust_pvalue() %>% add_xy_position(x = "Genotype")
+#  
+# 
+#  ggboxplot(mydata_dark, x = "Genotype", y = "Anxiety_dark", scales = "fixed", fill = "Genotype") + 
+#    scale_fill_brewer(palette = "Greys", 
+#                      direction = 1) +
+#    theme_minimal() + 
+#    labs(x = "Genotype", y = "Anxiety Score") +
+#    theme(axis.title.y = element_text(size = 11L, 
+#                                      face = "bold"), axis.title.x = element_text(size = 11L, face = "bold"), 
+#          plot.title = element_text(size = 14L, face = "bold"), legend.position = "none") +
+#    ylim(-3, 4.75) +
+#    stat_pvalue_manual(tukey, label = "p.adj.signif", tip.length = 0.01, bracket.nudge.y = -2, 
+#                        y.position = c(4.25, 4.70, 4.25))  
+#  
+#  
+# ####Logistic Regression - Glm or polr####
+# 
+#  
+# model <- polr(as.factor(Genotype) ~ Anxiety_dark + Locomotor_dark + Trial, mydata_dark, Hess = TRUE)
+#  
+#  tab_model(model)
+#  
+#  polr
+# 
+#  
+# #New CSV 
+#  
+# write.csv(mydata_dark, "Dark_PCA_Data.csv")
+ 
+ 
+```
+

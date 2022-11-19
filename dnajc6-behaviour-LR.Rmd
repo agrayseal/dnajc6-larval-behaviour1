@@ -1,0 +1,207 @@
+---
+title: "behaviour"
+author: "Angel Allen"
+date: "2022-11-15"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = FALSE)
+```
+
+### Packages
+
+```{r packages, message=F}
+# importing the data
+library(readxl) # import
+library(tidyverse) # import
+
+# visualisation
+library(ggplot2) # ggplot()
+library(ggpubr) # ggarrange()
+library(ggfortify)
+library(kableExtra)
+
+# data manipulation
+library(rcompanion) # transformTukey()
+# library(foreign)
+library(nnet) # multinom()
+# library(reshape2)
+
+# library(psych) #principal()
+
+# library(esquisse)
+
+theme_set(theme_bw()) # set ggplot to b/w
+# options(scipen = 100) # set to 0 to go back to scientific notation
+# rm(list = ls())
+```
+
+[Multinomial logistic regression](https://stats.oarc.ucla.edu/r/dae/multinomial-logistic-regression/#:~:text=Multinomial%20logistic%20regression%20is%20used,the%20examples%20on%20this%20page.) is...
+
+The guide above is based on *Logistic Regression Models* by Hilbe.
+
+Some alternative methods of analysis are:
+
+* Multiple-group discriminant function analysis - this is a multivariate method (can utilise all of the behavioural features at once).
+* Multinomial probit regression - for independent normal error terms.
+
+Here I will be performing multinomial logistic regression on the 12 Oct data from the dark time bins. First I'm going to revisit the raw data.
+
+```{r import}
+source("scripts/import.R")
+source("scripts/DE functions.R")
+
+dark_bins <- c(6, 7, 8, 9, 10)
+
+raw_dark_12 <- read_data("12-Oct-22") %>%
+  subset(fish_id %in% grep("7.10", .$fish_id, value = T)) %>%
+  subset(Bin %in% dark_bins)
+
+expl <- colnames(raw_dark_12[,c(1:7)])
+vars <- colnames(raw_dark_12[,-c(1:7)])
+```
+
+
+```{r data check}
+print("Missing values:")
+sapply(raw_dark_12, function(x) sum(is.na(x)))
+
+print("Unique values:")
+sapply(raw_dark_12[,c(expl)], function(x) length(unique(x)))
+
+print("Number of values:")
+sapply(raw_dark_12[,c(vars)], function(x) length(x))
+
+print("Number of zeroes:")
+sapply(raw_dark_12[,c(vars)], function(x) sum(x == 0))
+
+# This shows how R has coded genotype. Wildtype is the reference.
+contrasts(raw_dark_12$Genotype)
+```
+
+```{r remove zeroes}
+raw_dark_12[,18:21][raw_dark_12[,18:21] == 0] <- NA
+```
+
+
+```{r raw lambdas}
+lambdas <- get_lambda(raw_dark_12, vars) %>% t()
+
+lambdas %>% kable() %>% kable_styling()
+```
+
+```{r raw transformation}
+data_12 <- raw_dark_12
+for (i in vars) {
+  lambda <- lambdas[i, 1]
+  data_12 <- data_12 %>%
+    mutate_at(i, function(x){x^lambda})
+}
+```
+
+```{r}
+a <- lapply(vars, plot_histbox, data = raw_dark_12)
+b <- lapply(vars, plot_histbox, data = data_12)
+
+plots <- c(rbind(a, b))
+
+ggarrange(plotlist = plots, ncol = 3)
+```
+
+
+I'll now be taking the mean of each variable for each fish in each trial.
+
+```{r sum dark}
+mean_dark_12 <- raw_dark_12 %>%
+  group_by(fish_id, Genotype, Position, Tray, Trial, Time) %>%
+  summarise_if(is.numeric, mean) %>% ungroup()
+```
+
+```{r raw plots}
+plots <- lapply(vars, plot_histbox, data = mean_dark_12)
+
+ggarrange(plotlist = plots, ncol = 3)
+```
+
+Many appear to have relatively normal distributions which is good to see.
+
+```{r lambdas}
+lambdas <- get_lambda(mean_dark_12, vars) %>% t()
+
+lambdas %>% kable() %>% kable_styling()
+```
+
+```{r transformation}
+data_12 <- mean_dark_12
+for (i in vars) {
+  lambda <- lambdas[i, 1]
+  data_12 <- data_12 %>%
+    mutate_at(i, function(x){x^lambda})
+}
+```
+
+```{r transf plots}
+plots <- lapply(vars, plot_histbox, data = data_12)
+
+ggarrange(plotlist = plots, ncol = 3)
+```
+
+They look a bit better after the transformations.
+
+# Pairplots
+
+```{r pairs}
+pairs(data_12[,-c(1:5)])
+```
+
+There seems to be a relatively linear relationship between all of the variables. One thing that looks interesting the frequency moving - a nonlinear relationship can be seen for most variables.
+
+```{r freq moving mobility}
+ggplot(data_12) +
+  geom_point(aes(x = Mobility_mean, y = Freq_moving, colour = Genotype), size = 2)
+```
+
+This looks like a quadratic relationship, so I will try fitting a quadratic model.
+
+```{r model}
+lmodel <- lm(Freq_moving ~ Mobility_mean, data = data_12)
+
+summary(lmodel)
+
+data_12$Mobility_mean2 <- data_12$Mobility_mean^2
+
+qmodel <- lm(Freq_moving ~ Mobility_mean + Mobility_mean2, data = data_12)
+
+summary(qmodel)
+```
+
+Less than 1% of the variance is explained by a linear model, whereas ~50% is explained when a quadratic model is used.
+
+```{r}
+mobilityValues <- seq(0, 6, 0.1)
+
+#create list of predicted happines levels using quadratic model
+fmPredict <- predict(
+  qmodel,
+  list(Mobility_mean = mobilityValues,
+       Mobility_mean2 = mobilityValues^2))
+
+#create scatterplot of original data values
+plot(data_12$Mobility_mean, data_12$Freq_moving, pch = 16)
+#add predicted lines based on quadratic regression model
+lines(mobilityValues, fmPredict, col='blue')
+```
+
+
+```{r test}
+# test <- multinom(Genotype ~ Dist_travelled_total + Dist_to_middle_total + Acceleration_max + Acceleration_min + Freq_moving, data = mean_dark_12)
+# 
+# summary(test)
+```

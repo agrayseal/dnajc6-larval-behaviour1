@@ -1,0 +1,285 @@
+---
+title: "dnajc6 behaviour initial analysis"
+author: "Angel Allen"
+date: "2022-11-13"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = FALSE)
+```
+
+### Packages
+
+```{r packages, message=F}
+# importing the data
+library(readxl) # import
+library(tidyverse) # import
+
+# visualisation
+library(ggplot2) # ggplot()
+library(ggpubr) # ggarrange()
+library(ggfortify)
+library(kableExtra)
+
+# data manipulation
+library(rcompanion) # transformTukey()
+# library(broom) # augment()
+
+# library(psych) #principal()
+
+# library(esquisse)
+
+theme_set(theme_bw()) # set ggplot to b/w
+# options(scipen = 100) # set to 0 to go back to scientific notation
+# rm(list = ls())
+```
+
+## Importing data
+
+```{r import}
+source("scripts/import.R")
+source("scripts/DE functions.R")
+
+bad_fish <- c("56.2-6.10", "5.2-6.10", "71.4-7.10", "5.4-7.10")
+
+raw_11 <- read_data("11-Oct-22") %>% subset(.$fish_id %in% grep("6.10", .$fish_id, value = T))
+
+raw_11 <- raw_11[!raw_11$fish_id %in% bad_fish,]
+
+raw_12 <- read_data("12-Oct-22") %>% subset(.$fish_id %in% grep("7.10", .$fish_id, value = T))
+
+raw_12 <- raw_12[!raw_12$fish_id %in% bad_fish,]
+
+raw_all <- bind_rows(raw_11, raw_12, .id = "Family")
+```
+
+```{r labels}
+labels <- read.csv("files/labels.csv")
+labels[grep("Acceleration", labels$Feature),"units"] <- "mm/s$^2$"
+```
+
+# Data exploration
+
+```{r variables}
+expl <- colnames(raw_all[,c(1:8)])
+vars <- colnames(raw_all[,-c(1:8)])
+```
+
+First I will be looking at the distribution of all variables.
+
+The data exploration showed that most variables needed transformation to reduce the right skew. Data gathered during the dark period seems to be the easiest to handle, so that's what I'll be investigating here.
+
+```{r dark data}
+dark_bins <- c(6:10)
+
+raw_dark_11 <- raw_11 %>% subset(Bin %in% dark_bins)
+raw_dark_12 <- raw_12 %>% subset(Bin %in% dark_bins)
+```
+
+I'll be transforming them based on the lambda values obtained from Tukey's Ladder of Powers.
+
+```{r lambdas}
+expl <- colnames(raw_all[,c(2:8)])
+vars <- colnames(raw_all[,-c(1:8)])
+
+# This takes a while to calculate, so I saved the object to be loaded in
+# lambdas <- rbind(
+#   get_lambda(raw_dark_11, vars), 
+#   get_lambda(raw_dark_12, vars)
+#   ) %>% `rownames<-`(c("11 Oct", "12 Oct")) %>% t()
+
+# saveRDS(lambdas, "files/lambdas.rds")
+lambdas <- readRDS("files/lambdas.rds")
+
+lambdas %>% kable() %>% kable_styling()
+```
+
+Based on the table I will be doing a square root transformation for the majority of the variables.
+
+```{r transformations}
+dark_11 <- raw_dark_11
+for (i in vars) {
+  lambda <- lambdas[i,"11 Oct"]
+  dark_11 <- dark_11 %>%
+    mutate_at(i, function(x){x^lambda})
+}
+
+dark_12 <- raw_dark_12
+for (i in vars) {
+  lambda <- lambdas[i,"12 Oct"]
+  dark_12 <- dark_12 %>%
+    mutate_at(i, function(x){x^lambda})
+}
+```
+
+```{r plots}
+plots_11 <- lapply(vars, plot_histbox, data = dark_11, labels)
+plots_12 <- lapply(vars, plot_histbox, data = dark_12, labels)
+
+ggarrange(plotlist = plots_11, ncol = 3)
+ggarrange(plotlist = plots_12, ncol = 3)
+```
+
+# Statistical tests
+
+I'll now be doing ANOVAs to determine whether any of the genotype means are significantly different from one another.
+
+## ANOVA
+
+```{r anova}
+# aov(dark_11$Dist_travelled_total ~ dark_11$Genotype, data = dark_11) %>% summary
+for (i in vars) {
+  print(i)
+  aov(get(i) ~ Genotype + Trial + Genotype:Trial, data = dark_12) %>% summary() %>% print()
+}
+
+anova <- tibble(Feature = vars)
+
+for (i in 1:length(anova$Feature)) {
+  anova$`Geno F-val`[i] <- summary(aov(get(anova$Feature[i]) ~ Genotype + Trial + Genotype:Trial, data = dark_12))[[1]][1, 4]
+  anova$`Trial F-val`[i] <- summary(aov(get(anova$Feature[i]) ~ Genotype + Trial + Genotype:Trial, data = dark_12))[[1]][2, 4]
+  anova$`Geno P-val`[i] <- summary(aov(get(anova$Feature[i]) ~ Genotype + Trial + Genotype:Trial, data = dark_12))[[1]][1, 5]
+  anova$`Trial P-val`[i] <- summary(aov(get(anova$Feature[i]) ~ Genotype + Trial + Genotype:Trial, data = dark_12))[[1]][2, 5]
+  anova$`Intxn P-val`[i] <- summary(aov(get(anova$Feature[i]) ~ Genotype + Trial + Genotype:Trial, data = dark_12))[[1]][3, 5]
+  anova$`Geno sig?`[i] <- anova$`Geno P-val`[i] < 0.05
+  anova$`Trial sig?`[i] <- anova$`Geno F-val`[i] > anova$`Trial F-val`[i]
+}
+
+anova %>% kable() %>% kable_styling()# %>% row_spec
+```
+
+### P-values
+
+```{r plot anova}
+rmv <- c("Meander_total", "Meander_mean", "Meander_var")
+
+anova_p <- anova %>%
+  pivot_longer(contains("P-val")) %>%
+  select(Feature, name, value) %>%
+  subset(!(Feature %in% rmv))
+
+ggplot(anova_p %>% mutate(p = -log10(value)),
+       aes(x = reorder(Feature, p), y = p, fill = name)) +
+  geom_col(width = 0.5, position = position_dodge(0.5)) +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  geom_hline(yintercept = -log10(0.05))
+
+# plot(aov(Dist_travelled_total ~ Genotype + Trial + Genotype:Trial, data = dark_11))
+```
+
+## Tukey's HSD
+
+I'll now do a Tukey's HSD to determine which genotypes are significantly different.
+
+```{r tukey hsd}
+# getting the variables that were significant for genotype
+sig_vars <- anova$Feature[anova$`Geno sig?` == T]
+
+for (i in sig_vars) {
+  print(i)
+  print(TukeyHSD(aov(get(i) ~ Genotype, data = dark_12)))
+}
+
+tukey <- tibble(Feature = sig_vars)
+
+for (i in 1:length(tukey$Feature)) {
+  tukey$wt.het[i] <- TukeyHSD(
+    aov(get(tukey$Feature[i]) ~ Genotype, data = dark_12))[[1]][1, 4]
+  tukey$wt.hom[i] <- TukeyHSD(
+    aov(get(tukey$Feature[i]) ~ Genotype, data = dark_12))[[1]][2, 4]
+  tukey$het.hom[i] <- TukeyHSD(
+    aov(get(tukey$Feature[i]) ~ Genotype, data = dark_12))[[1]][3, 4]
+}
+```
+
+### P-values
+
+```{r plot tukey}
+tukey_p <- tukey %>%
+  pivot_longer(!Feature, names_to = "Genotypes", values_to = "p") %>%
+  separate(Genotypes, c("group1", "group2"), "\\.", remove = F)
+
+ggplot(tukey_p %>% mutate(p = -log10(p)),
+       aes(x = reorder(Feature, p), y = p, fill = Genotypes)) +
+  geom_col(width = 0.5, position = position_dodge(0.5)) +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  geom_hline(yintercept = -log10(0.05))
+```
+
+### Assumptions
+
+```{r model}
+model_11 <- lm(Dist_travelled_total ~ Genotype + Trial + Genotype:Trial, data = dark_11)
+model_12 <- lm(Dist_travelled_total ~ Genotype + Trial + Genotype:Trial, data = dark_12)
+```
+
+```{r plot model}
+# par(mfrow = c(2, 2))
+autoplot(model_11)
+autoplot(model_12)
+```
+
+There appears to be some heteroscedasticity for the 11 Oct data. The residuals have a normal distribution though. The assumptions appear to hold for the 12 Oct data (residuals vs fitted looks good), although the residuals don't appear to be completely normally distributed.
+
+### Summary stats
+
+```{r summary}
+get_summary <- function(data, vars) {
+ do.call(cbind, lapply(data[,c(vars)], summary)) %>%
+    t() %>% as.data.frame() %>%
+    mutate(Mean = signif(Mean, 3))
+}
+
+dark_geno_11 <- group_split(dark_11, Genotype)
+
+summary_11 <- lapply(dark_geno_11, get_summary, vars) %>%
+  `names<-`(c("wt", "het", "hom"))
+
+# kable(summary_11[1]) %>%
+#   kable_styling(full_width = FALSE, position = "float_left")
+# kable(summary_11[2]) %>%
+#   kable_styling(full_width = FALSE, position = "left")
+```
+
+# Boxplots
+
+```{r boxplots}
+source("scripts/graphs.R")
+
+genotypes <- c("wt", "het", "hom")
+
+tukey_plot <- data.frame(
+  Feature = vars,
+  y.position = sapply(dark_12[,-c(1:7)], max)) %>%
+  right_join(tukey_p) %>%
+  mutate(p = signif(p, 2))
+
+boxplot_data <- function(data, x, y, p = NULL, title = "Title") {
+  ggplot(data, aes_string(x = x, y = y)) +
+    # geom_jitter(aes(colour = Genotype), size = 2, alpha = 0.5) +
+    geom_dotplot(aes(fill = Genotype), 
+                 alpha = 0.25, binaxis = "y", 
+                 dotsize = 1, stackdir = "center",
+                 binwidth = 0.3) +
+    geom_boxplot(aes(fill = Genotype), alpha = 0.25, outlier.shape = NA) +
+    scale_fill_viridis_d() +
+    stat_pvalue_manual(p, step.increase = 0.1) +
+    annotate("text", x = "wt", y = 20, label = paste0("Mean: ", summary_11$wt[y, "Mean"])) +
+    annotate("text", x = "het", y = 20, label = paste0("Mean: ", summary_11$het[y, "Mean"])) +
+    annotate("text", x = "hom", y = 20, label = paste0("Mean: ", summary_11$hom[y, "Mean"])) +
+    ggtitle(title)
+}
+
+dist_plot <- boxplot_data(dark_12, "Genotype", "Dist_travelled_total", tukey_plot[tukey_plot$Feature == "Dist_travelled_total",], "Total Distance Travelled")
+
+ggsave("plots/dist_travelled.png", dist_plot, width = 3240, height = 2160, units = "px")
+```

@@ -1,0 +1,382 @@
+---
+title: "*dnajc6* behaviour network"
+author: "Angel Allen"
+date: "2022-10-27"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = FALSE)
+```
+
+### Packages
+
+```{r packages, message=F}
+# importing the data
+library(readxl) # import
+library(tidyverse) # import
+
+# visualisation
+library(ggplot2) # ggplot()
+library(ggpubr) # ggarrange()
+library(ggfortify)
+library(kableExtra)
+
+# library(psych) #principal()
+
+# library(esquisse)
+
+theme_set(theme_bw()) # set ggplot to b/w
+# options(scipen = 100) # set to 0 to go back to scientific notation
+# rm(list = ls())
+```
+
+# Introduction
+
+Here I will be preparing the raw data obtained from behaviour tests of mutant *dnajc6* families at 5 days old for CF to train a neural network with. This data has been summarised for 1 minute time bins. I will be investigating the time bins from 2-5 minutes (time bins 3, 4, and 5, as fish were not always correctly tracked in the first 2 minutes). This will represent their "normal" behaviour in light conditions. Additionally, we will be investigating their behaviour following a sudden light to dark transition (from 5-8 minutes, time bins 6, 7, and 8). I will be looking at both locomotor and anxiety-related features (thigmotaxis).
+
+# Importing data
+
+Here I'm importing the behaviour data from `.csv` files exported from EthoVision XT. This data is being merged with a "metadata" spreadsheet that contains a fish ID, parents and spawn date, genotypes, tray number and position. An additional spreadsheet containing the trial information (trial number, time, and tray in that trial) was joined to the metadata as each tray was subjected to multiple trials. The fish metadata was joined to the behavioural data by trial number and position (in the tray).
+
+Fish ID contains: `(individual fish number).(parent pair number)-(day.month)`
+
+```{r import}
+# getting the file with functions to read in data
+source("scripts/import.R")
+
+# here I'm selecting the trials of interest
+raw_11 <- read_data("11-Oct-22") %>% subset(.$fish_id %in% grep("6.10", .$fish_id, value = T))
+
+# here I'm selecting only the fish at 5 dpf
+raw_12 <- read_data("12-Oct-22") %>% subset(.$fish_id %in% grep("7.10", .$fish_id, value = T))
+```
+
+## Untracked
+
+I need to remove fish that were not tracked by the machine.
+
+```{r untracked}
+# fish_ids of larvae that were untracked, or had severe deformities that prevented movement
+untracked <- c(
+  "2.2-6.10",
+  "56.2-6.10"
+)
+
+raw_11[raw_11$fish_id %in% untracked,] %>%
+  select(fish_id, Genotype, Position, Trial, Time) %>%
+  distinct() %>%
+  kable(caption = "Larvae omitted due to deformity or tracking problems") %>%
+  kable_styling()
+  
+raw_11 <- raw_11[!raw_11$fish_id %in% untracked,]
+
+# making a merged version of all the raw data
+raw_all <- full_join(raw_11, raw_12)
+# write_csv(raw_all, "processed/dnajc6 behaviour raw_all.csv")
+```
+
+## Summary
+
+Here I will be generating the summary statistics for the raw data.
+
+```{r raw summary}
+raw_sum <- do.call(cbind, lapply(raw_all[,-c(1:7)], summary)) %>% t()
+
+raw_sum %>%
+  kable(caption = "Raw data summary statistics") %>%
+  kable_styling()
+```
+
+# Outliers
+
+Extreme outliers will result in problems with training the network, so I will be removing larvae with z-scores (absolute number of standard deviations from the mean) greater than 4 (for their genotype). To prevent the loss of too many data points, any values considered to be outliers will be converted to `NA` here and the row (fish) will only be omitted just before use of the data.
+
+I'm also seeing which fish would be considered outliers if I were to calculate z-scores based on the overall mean rather than the mean for each genotype.
+
+```{r outlier removal}
+# this calculates the z-scores for each feature
+z_scores <- function(data) {
+  x <- sapply(data[,-c(1:7)],
+         function(x) (abs(x - mean(x)) / sd(x))) %>%
+    as.matrix()
+}
+
+threshold <- 4
+
+trm_11 <- raw_11
+outliers_11 <- c()
+for (i in levels(trm_11$Genotype)) {
+  # print(i)
+  # print(summary(z_scores(trm_11[trm_11$Genotype == i,])))
+  
+  outliers_11[i] <- sum(rowSums(z_scores(trm_11[trm_11$Genotype == i,]) > threshold) > 0)
+  
+  trm_11[trm_11$Genotype == i,] <- trm_11[trm_11$Genotype == i,] %>%
+    mutate(replace(.[,-c(1:7)], z_scores(.) > threshold, NA))
+}
+# outliers_11
+
+trm_12 <- raw_12
+outliers_12 <- c()
+for (i in levels(trm_12$Genotype)) {
+  # print(i)
+  # print(summary(z_scores(trm_12[trm_12$Genotype == i,])))
+  
+  outliers_12[i] <- sum(rowSums(z_scores(trm_12[trm_12$Genotype == i,]) > threshold) > 0)
+  
+  trm_12[trm_12$Genotype == i,] <- trm_12[trm_12$Genotype == i,] %>%
+    mutate(replace(.[,-c(1:7)], z_scores(.) > threshold, NA))
+}
+# outliers_12
+
+trm_all <- full_join(trm_11, trm_12)
+
+# write_csv(trm_all, "processed/dnajc6 behaviour trm_all.csv")
+
+###
+# Outlier removal using the overall mean
+
+trm_11b <- raw_11 %>%
+  mutate(replace(.[,-c(1:7)], z_scores(.) > threshold, NA))
+
+trm_12b <- raw_12 %>%
+  mutate(replace(.[,-c(1:7)], z_scores(.) > threshold, NA))
+
+trm_all2 <- full_join(trm_11b, trm_12b)
+```
+
+## Summary
+
+```{r outlier summary}
+outliers_sum <- rbind(outliers_11, outliers_12) %>%
+  `rownames<-`(c("11 Oct", "12 Oct")) %>%
+  cbind(Total = rowSums(.)) %>%
+  rbind(Total = colSums(.))
+
+outliers_sum %>% 
+  kable(caption = "Number of outliers removed from each family") %>%
+  kable_styling()
+```
+
+Here, I'm going to make a table containing all outlier fish so I can have a better look at them.
+
+```{r outlier fish}
+outliers <- anti_join(raw_all, trm_all) %>% droplevels()
+
+# number of unique fish IDs
+length(levels(outliers$fish_id))
+
+df <- data.frame(table(outliers$fish_id)) %>%
+  `colnames<-`(c("fish_id", "Freq")) %>%
+  # adding genotypes
+  left_join(outliers %>% select(fish_id, Genotype) %>% distinct()) %>%
+  mutate(Family = str_extract(fish_id, "[^-]+$") %>% as.factor())
+
+# df$Freq %>% summary()
+
+x <- ggplot(df, aes(x = Freq)) +
+  geom_dotplot(aes(fill = Genotype, colour = Genotype), dotsize = 0.75) +
+  ggtitle("Group means")
+
+###
+
+outliers2 <- anti_join(raw_all, trm_all2) %>% droplevels()
+
+# number of unique fish IDs
+length(levels(outliers2$fish_id)) # less outliers
+
+df2 <- data.frame(table(outliers2$fish_id)) %>%
+  `colnames<-`(c("fish_id", "Freq")) %>%
+  # adding genotypes
+  left_join(outliers2 %>% select(fish_id, Genotype) %>% distinct()) %>%
+  mutate(Family = str_extract(fish_id, "[^-]+$") %>% as.factor())
+
+# df2$Freq %>% summary()
+
+y <- ggplot(df2, aes(x = Freq)) +
+  geom_dotplot(aes(fill = Genotype, colour = Genotype), dotsize = 0.75) +
+  ggtitle("Overall mean")
+
+ggarrange(x, y, common.legend = T)
+```
+
+There are 131 fish with at least one extreme measurement, which is over half (59.6%) of the total fish tested. Most fish were outliers for ~5 of their time bins. The majority of fish that were outliers for only some time bins (<6) were homozygous, and those with extreme values for the majority of their bins (>6) were heterozygous.
+
+Dotplot of which time bin each extreme value is from:
+
+```{r outlier hist}
+ggarrange(
+  ggplot(outliers, aes(x = Bin)) +
+    geom_dotplot(aes(fill = Genotype, colour = Genotype), 
+                 dotsize = 0.5, stackgroups = T) +
+    ggtitle("Group means"),
+  
+  ggplot(outliers2, aes(x = Bin)) +
+    geom_dotplot(aes(fill = Genotype, colour = Genotype), 
+                 dotsize = 0.5, stackgroups = T) +
+    ggtitle("Overall mean"),
+  common.legend = T
+)
+```
+
+This shows that the vast majority of the outliers are in the light time periods. I likely need to look into ways to transform the data rather than removing outliers.
+
+```{r boxplots}
+# features <- colnames(raw_all)[-c(1:7)]
+# 
+# for (i in features) {
+#   boxplot(raw_all[[i]] ~ raw_all$Bin,
+#           main = i)
+# }
+```
+
+# Processing
+
+## Light data
+
+Here I will select locomotor features, subset the light bins of interest, then calculate the average value for each feature in the light. Rather than omitting the outliers, I just averaged their results (so some fish may have the average of less than 3 time bins).
+
+```{r light data}
+light_bins <- c(3, 4, 5)
+
+light_data <- trm_all %>% #select(all_of(locomotor_feat)) %>%
+  subset(.$Bin %in% light_bins) %>% droplevels() %>% na.omit()
+
+mean_light <- light_data %>%
+  group_by(fish_id, Trial, Genotype) %>%
+  summarise_if(is.numeric, mean) %>% ungroup()
+```
+
+## Dark data
+
+I'm also going to select all features in the dark for time bins 5, 6, and 7. These will be averaged for each fish as before.
+
+```{r dark data}
+dark_bins <- c(6, 7, 8)
+
+dark_data <- trm_all %>%
+  subset(.$Bin %in% dark_bins) %>% droplevels() %>% na.omit()
+
+mean_dark <- dark_data %>%
+  group_by(fish_id, Trial, Genotype) %>%
+  summarise_if(is.numeric, mean) %>% ungroup()
+```
+
+## Merging data
+
+I will now merge the light and dark features for each fish, with separate columns for their performance in each condition.
+
+```{r mrclean}
+mrclean <- full_join(mean_light, mean_dark,
+                  by = c("fish_id", "Trial", "Genotype"),
+                  suffix = c("", ".dark")) # no suffix for light features
+
+# adding an extra column so CF can split the data by fish family
+mrclean <- mrclean %>%
+  mutate(Family = str_extract(fish_id, "[^-]+$") %>% as.factor()) %>%
+  relocate(Family, .after = fish_id)
+
+# saveRDS(mrclean, "processed/mrclean.rds")
+# write_csv(mrclean, "processed/mrclean.csv")
+```
+
+# Visualisation
+
+# Over time
+
+```{r raw plots}
+source("scripts/graphs.R")
+
+features <- colnames(raw_all)[-c(1:7)]
+
+plots_11 <- lapply(features, plot_raw, data = trm_11[!trm_11$Genotype == "het",] %>% na.omit())
+plots_12 <- lapply(features, plot_raw, data = trm_12[!trm_12$Genotype == "het",] %>% na.omit())
+
+plots_compare <- c(rbind(plots_11, plots_12))
+
+ggarrange(plotlist = plots_compare, ncol = 2, common.legend = T)
+```
+
+# Group means
+
+```{r processed plots}
+features <- colnames(mrclean)[-c(1:4)]
+
+plots_all <- lapply(features, plot_data, data = mrclean[!mrclean$Genotype == "het",] %>% na.omit())
+
+ggarrange(plotlist = plots_all, ncol = 2, common.legend = T)
+```
+
+```{r figure}
+# data <- trm_all[!trm_all$Genotype == "het",] %>% subset(Bin %in% c(2:7))
+# 
+# ggplot(data, aes(x = Genotype, y = Dist_travelled_total, fill = Bin)) +
+#     geom_jitter(aes(colour = Genotype), size = 2, alpha = 0.5) +
+#     geom_boxplot(aes(colour = Genotype), alpha = 0.25, outlier.shape = NA)
+```
+
+```{r}
+source("scripts/graphs.R")
+data <- trm_all[!trm_all$Genotype == "het",] %>% droplevels() %>% na.omit()
+
+levels(data$Genotype) <- c("Wildtype", "Mutant")
+
+# a <- plot_raw(data, "Dist_travelled_mean")
+# b <- plot_raw(data, "Freq_moving")
+
+panels <- data.frame(start = c(0.5, 5.5, 10.5),
+                     end = c(5.5, 10.5, 15.5),
+                     colours = factor(c("#FFE961", "#000000", "#FFE961")))
+
+# INTERESTING PLOT
+#
+# a <- ggplot() +
+#     # geom_jitter(data = data, aes(x = Bin, y = Dist_travelled_total, colour = Genotype), alpha = 0.25, size = 2) +
+#     # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+#     # Line showing the mean for each genotype in each time bin
+#     geom_line(
+#       data = data, #%>%
+#         # group_by(Bin, Genotype) %>%
+#         # summarise(g_mean = mean(Dist_travelled_total), .groups = "drop"),
+#       aes(x = Bin, y = Dist_travelled_total, group = Genotype, colour = Genotype), size = 1.5) +
+#     # Panels showing light/dark periods
+#     geom_rect(
+#       data = panels,
+#       aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf),
+#       fill = panels$colours, alpha = 0.3) +
+#     xlab("Time bin (minute)") +
+#     ylab("Total distance travelled (mm)") +
+#   theme(text = element_text(size=20))
+
+# b <- ggplot() +
+#     geom_jitter(data = data, aes(x = Bin, y = Dist_travelled_total, colour = Genotype), alpha = 0.25) +
+#     # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+#     # Line showing the mean for each genotype in each time bin
+#   # scale_colour_gradient() +  
+#   geom_line(
+#       data = data %>%
+#         group_by(Trial) %>%
+#         # summarise(t_mean = mean(Dist_travelled_total), .groups = "drop") %>%
+#         mutate(t_mean = mean(Dist_travelled_total),
+#                geno_prop = prop.table(table(Genotype))[1]),
+#       aes(x = Bin, y = t_mean, group = Trial, colour = geno_prop), size = 1) +
+#     # Panels showing light/dark periods
+#     geom_rect(
+#       data = panels,
+#       aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf),
+#       fill = panels$colours, alpha = 0.3) +
+#     xlab("Time bin (minute)") +
+#     ylab("Frequency moving")
+
+# fig <- ggarrange(a, b, common.legend = T)
+
+# ggsave("raw_data.png", plot = a)
+```
+

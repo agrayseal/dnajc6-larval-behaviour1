@@ -1,0 +1,158 @@
+---
+title: "AACF paper data"
+author: "Angel Allen"
+date: "2022-11-02"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = FALSE)
+```
+
+```{r accuracies}
+library(tidyverse)
+# library(RcppCNPy)
+# library(rbenchmark)
+
+# data <- npyLoad("../ScholarshipPaper2/Experiments/losses/train_loss_9_90.npy")
+
+files <- grep("accuracies", dir("../ScholarshipPaper2/Experiments/losses/"), value = T)
+
+readnpy <- function(file) {
+  npyLoad(paste0("../ScholarshipPaper2/Experiments/losses/", file))
+}
+
+df <- sapply(files, readnpy, USE.NAMES = T)
+
+# train <- df[,grepl("train", colnames(df))]
+# test <- df[,grepl("test", colnames(df))]
+
+# ?<= means the character before should be x
+# ._[0-9]_ means any character, underscore, any digit, underscore
+# .* means any character and however many (zero or more)
+
+# (?<=x) "match if you see x on the left" - positive look behind
+# (?=x) "match if you see x on the right" - positive look ahead
+
+# str_extract(colnames(df), "(?<=._[0-9]_).*(?=\\.npy)") %>% unique()
+# accuracies[(i/10),1] <- mean(df[,grepl(paste0("train_accuracies_", i), colnames(df))])
+
+perceptrons <- seq(10, 100, 10)
+
+accuracies <- data.frame(
+  perceptrons = perceptrons,
+  mean_train = 0, 
+  sd_train = 0,
+  mean_test = 0,
+  sd_test = 0)
+
+for (i in perceptrons) {
+  # mean train accuracy
+  accuracies[i/10, "mean_train"] <- mean(df[,grepl(paste0("train_accuracies_", i), colnames(df))])*100
+  # mean test accuracy
+  accuracies[i/10, "mean_test"] <- mean(df[,grepl(paste0("test_accuracies_", i), colnames(df))])*100
+  # sd of train accuracy
+  accuracies[i/10, "sd_train"] <- sd(df[,grepl(paste0("train_accuracies_", i), colnames(df))])*100
+  # sd of test accuracy
+  accuracies[i/10, "sd_test"] <- sd(df[,grepl(paste0("test_accuracies_", i), colnames(df))])*100
+}
+
+
+```
+
+```{r gradients}
+files <- dir("gradients")
+mrclean <- readRDS("processed/mrclean.rds")
+features <- colnames(mrclean)[-c(1:4, 21:29)]
+
+readin <- function(file) {
+  read_csv(paste0("gradients/", file)) %>%
+     t() %>% as.data.frame() %>%
+    `colnames<-`(c("wt", "mut")) %>%
+    mutate(feature = factor(features, levels = features)) %>%
+    pivot_longer(c("wt", "mut"), names_to = "Genotype")
+}
+
+a_list <- lapply(files, readin) %>%
+  `names<-`(paste0("model", 1:10))
+
+attributions <- a_list[[1]]
+for (i in 2:length(a_list)) {
+  print(i)
+  attributions <- inner_join(
+    attributions, 
+    a_list[[i]], 
+    # all = TRUE,
+    suffix = names(a_list)[(i-1):i], by = c("Genotype", "feature"))
+}
+
+attributions$mean <- attributions[-c(1:2)] %>%
+  apply(1, mean, na.rm = TRUE)
+
+attributions$sd <- attributions[-c(1:2)] %>%
+  apply(1, sd, na.rm = TRUE)
+```
+
+```{r plot gradients}
+xlabels <- c(
+  "Distance travelled (total)",
+  "Distance travelled (mean)",
+  "Distance travelled (var)",
+  "Velocity (mean)",
+  "Velocity (var)",
+  "Time moving (total)",
+  "Frequency moving",
+  "Acceleration (max)",
+  "Acceleration (min)",
+  "Acceleration (var)",
+  "Frequency in middle",
+  "Time in middle (total)",
+  "Time in middle (mean)",
+  "Time in middle (var)",
+  "Distance to middle (total)",
+  "Distance to middle (mean)",
+  "Distance travelled (total)",
+  "Distance travelled (mean)",
+  "Distance travelled (var)",
+  "Velocity (mean)",
+  "Velocity (var)",
+  "Time moving (total)",
+  "Frequency moving",
+  "Acceleration (max)",
+  "Acceleration (min)",
+  "Acceleration (var)",
+  "Frequency in middle",
+  "Time in middle (total)",
+  "Time in middle (mean)",
+  "Time in middle (var)",
+  "Distance to middle (total)",
+  "Distance to middle (mean)",
+  "Distance to middle (var)",
+  "Mobility (total)",
+  "Mobility (mean)",
+  "Mobility (var)",
+  "Meander (total)",
+  "Meander (mean)",
+  "Meander (var)",
+  "Heading (mean)",
+  "Heading (var)"
+) %>% rev()
+
+gradients <- ggplot(attributions, aes(x = fct_rev(feature), y = mean, fill = Genotype)) +
+  geom_col(position = "dodge") +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2,
+                 position = position_dodge(0.9)) +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  xlab("Feature") +
+  ylab("Mean attribution") +
+  scale_x_discrete(labels= xlabels)
+  # geom_point(aes(x = feature, y = valuemodel4, fill = Genotype))
+ggsave("gradients.png", plot = gradients, width = 20, height = 30, units = "cm")
+```

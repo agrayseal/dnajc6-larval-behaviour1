@@ -1,0 +1,26 @@
+Feature,units,var
+Distance travelled (total),mm,Dist_travelled_total
+Distance travelled (mean),mm,Dist_travelled_mean
+Distance travelled (variance),mm,Dist_travelled_var
+Velocity (mean) ,mm/s,Velocity_mean
+Velocity (variance) ,mm/s,Velocity_var
+Time moving (total),sec,Time_moving_total
+Frequency moving,count,Freq_moving
+Acceleration (max),mm/s^2,Acceleration_max
+Acceleration (min),mm/s^2,Acceleration_min
+Acceleration (variance),mm/s^2,Acceleration_var
+Frequency in the middle,count,Freq_in_middle
+Time in the middle (total),sec,Time_in_middle_total
+Time in the middle (mean),sec,Time_in_middle_mean
+Time in the middle (variance),sec,Time_in_middle_var
+Distance to middle (total),mm,Dist_to_middle_total
+Distance to middle (mean),mm,Dist_to_middle_mean
+Distance to middle (variance),mm,Dist_to_middle_var
+Mobility (total),%,Mobility_total
+Mobility (mean),%,Mobility_mean
+Mobility (variance),%,Mobility_var
+Meander (total),deg/mm,Meander_total
+Meander (mean),deg/mm,Meander_mean
+Meander (variance),deg/mm,Meander_var
+Heading (mean),deg,Heading_mean
+Heading (variance),deg,Heading_var

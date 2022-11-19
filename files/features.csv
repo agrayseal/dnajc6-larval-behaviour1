@@ -1,0 +1,11 @@
+Feature,Units,Statistic
+Distance travelled,mm,"Total, mean, variance"
+Velocity,mm/s,"Mean, variance"
+Time moving,s,Total
+Acceleration,mm/s^2,"Maximum, minimum, variance"
+Frequency moving,count,Total
+Time in the middle,s,"Total, mean, variance"
+Distance to middle,mm,"Total, mean, variance"
+Mobility,%,"Total, mean, variance"
+Meander,deg/mm,"Total, mean, variance"
+Heading,deg,"Mean, variance"

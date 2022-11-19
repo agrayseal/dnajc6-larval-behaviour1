@@ -1,0 +1,82 @@
+---
+title: "Startle response"
+author: "Angel Allen"
+date: "2022-11-16"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = FALSE)
+```
+
+### Packages
+
+```{r packages, message=F}
+# importing the data
+library(readxl) # import
+library(tidyverse) # import
+
+# visualisation
+library(ggplot2) # ggplot()
+library(ggpubr) # ggarrange()
+library(ggrepel)
+library(ggfortify)
+library(kableExtra)
+
+# data manipulation
+library(rcompanion) # transformTukey()
+# library(broom) # augment()
+library(psych) #principal()
+library(lme4) # lmer()
+
+# library(esquisse)
+
+theme_set(theme_bw()) # set ggplot to b/w
+# options(scipen = 100) # set to 0 to go back to scientific notation
+# rm(list = ls())
+```
+
+```{r import}
+source("scripts/import.R")
+
+bad_fish <- c("56.2-6.10", "5.2-6.10", "71.4-7.10", "5.4-7.10")
+
+raw_11 <- read_data("11-Oct-22") %>% subset(.$fish_id %in% grep("6.10", .$fish_id, value = T))
+
+raw_11 <- raw_11[!raw_11$fish_id %in% bad_fish,]
+
+raw_12 <- read_data("12-Oct-22") %>% subset(.$fish_id %in% grep("7.10", .$fish_id, value = T))
+
+raw_12 <- raw_12[!raw_12$fish_id %in% bad_fish,]
+
+raw_all <- bind_rows(raw_11, raw_12, .id = "Family")
+```
+
+```{r summarised}
+dark_bins <- c(6:10)
+
+raw_all$cond <- ifelse(raw_all$Bin %in% dark_bins, "dark", "light")
+
+mean_all <- raw_all %>%
+  group_by(Family, fish_id, Genotype, Position, Tray, Trial, Time, cond) %>%
+  summarise_if(is.numeric, mean) %>% ungroup()
+```
+
+```{r light dark}
+split <- mean_all %>% group_split(cond)
+
+mrclean <- full_join(split[[1]] %>% select(-cond), split[[2]] %>% select(-cond),
+                  by = c("Family", "fish_id", "Trial", "Genotype"),
+                  suffix = c(".dark", ".light"))
+```
+
+```{r startle response}
+mrclean$sr <- mrclean$Time_moving_total.dark - mrclean$Time_moving_total.light
+```
+
