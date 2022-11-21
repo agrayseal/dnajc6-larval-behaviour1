@@ -27,6 +27,7 @@ library(ggplot2) # ggplot()
 library(ggpubr) # ggarrange()
 library(ggfortify)
 library(ggrepel)
+library(ggord) # ggord()
 library(GGally) # ggpairs()
 library(kableExtra)
 # library(esquisse)
@@ -103,7 +104,9 @@ ggarrange(plotlist = plots, ncol = 2, common.legend = T)
 I'll be using all variables other than the variances to make a locomotor and anxiety score for each fish. I'll then average these scores for each fis across the light or dark period.
 
 ```{r features}
-mvars <- colnames(raw_all)[c(9,10,12,14:17,26:33)]
+# locomotor features
+mvars <- colnames(raw_all)[c(9,10,12,14:17,26,27,29,30,32)]
+# anxiety features
 avars <- colnames(raw_all)[c(19:21,23,24)]
 ```
 
@@ -148,7 +151,7 @@ raw_dark$ascore <- ascore
 
 ```{r plot scores}
 ggplot(raw_dark, aes(x = mscore, y = ascore, colour = Genotype)) +
-  geom_point(aes(shape = Family), size = 2) +
+  geom_point(aes(shape = Family), size = 2, alpha = 0.5) +
   stat_ellipse(size = 1)
 ```
 
@@ -167,7 +170,7 @@ pca <- raw_dark[,vars] %>%
 pca_all <- cbind(raw_dark, pca$x[,c("PC1", "PC2")]) %>% as_tibble
 
 ggplot(pca_all, aes(x = PC1, y = PC2, colour = Genotype)) +
-  geom_point(aes(colour = Genotype, shape = Family), size = 3) +
+  geom_point(aes(colour = Genotype, shape = Family), size = 3, alpha = 0.5) +
   stat_ellipse(size = 1)
   # geom_text_repel(aes(label = fish_id))
 ```
@@ -204,6 +207,109 @@ c <- boxplot_data(mean_dark, "score")
 ggarrange(a, b, c, common.legend = T)
 ```
 
+# Linear discriminant analysis
+
+```{r no repeated measures}
+mean_dark2 <- mean_dark %>%
+  group_by(fish_id, Family, Genotype) %>%
+  summarise_if(is.numeric, mean)
+
+a <- boxplot_data(mean_dark2, "mscore")
+
+b <- boxplot_data(mean_dark2, "ascore")
+
+c <- boxplot_data(mean_dark2, "score")
+
+ggarrange(a, b, c, common.legend = T)
+```
+
+Identifying collinear variables:
+
+```{r collinear}
+# taking the genotype and variables of interest
+x <- mean_dark[,c("Genotype", vars, "mscore", "ascore")] %>%
+  mutate_at(all_of(vars), scale) # scaling variables for lda
+
+corDF = cor(x[,-1])
+dissimilarity <- 1 - abs(corDF)
+distance <- as.dist(dissimilarity)
+hc <- hclust(distance)
+clusterV = cutree(hc,h=0.05)
+clusterV %>% as.data.frame()
+```
+
+This shows which variables are clustering together (and therefore collinear/redundant).
+
+```{r lda}
+train <- sample(1:nrow(x), floor(nrow(x)*0.85)) # making a random training sample
+
+# linear discriminant analysis using the training set
+lda <- MASS::lda(Genotype ~ ., x, subset = train)
+# seeing how the model did for the training set
+pr <- predict(lda, x[train,])
+tab <- table(Actual = x[train,]$Genotype, Predicted = pr$class)
+# test set accuracy
+sum(diag(tab))/sum(tab)
+
+# predicting using the test set (remaining obs)
+pr <- predict(lda, x[-train,])
+tab <- table(Actual = x[-train,]$Genotype, Predicted = pr$class)
+# test set accuracy
+sum(diag(tab))/sum(tab)
+
+# visualising the results
+plot_lda <- data.frame(
+  Genotype = x$Genotype, 
+  lda = predict(lda, x)$x)
+
+ggplot(plot_lda, aes(x = lda.LD1, y = lda.LD2, colour = Genotype)) + 
+  geom_point(size = 3, alpha = 0.5) +
+  stat_ellipse(size = 1)
+```
+
+```{r coefficients}
+lda_coeff <- lda$scaling %>% as_tibble(rownames = "Feature")
+
+ggplot(lda_coeff %>% pivot_longer(c(LD1, LD2))) +
+  geom_col(aes(x = Feature, y = value, fill = name), position = "dodge") +
+  coord_flip()
+```
+
+Looking at the linear discriminants, the variables most important for discriminating between genotypes appear to be:
+
+* Mean velocity
+* Total and mean mobility
+* Total and mean distance travelled
+* Total and mean distance to the middle
+
+I'm going to try some visualisation with just these variables maybe?
+
+```{r lda vars}
+lda_vars <- colnames(mean_dark)[c(5,19)] # 5,6,8,19,20,22,23
+
+pca <- mean_dark[,lda_vars] %>%
+  prcomp(scale. = T, rank. = 2)
+pca_all <- cbind(mean_dark, pca$x[,c("PC1", "PC2")]) %>% as_tibble
+
+ggplot(pca_all, aes(x = PC1, y = PC2, colour = Genotype)) +
+  geom_point(aes(colour = Genotype, shape = Family), size = 3, alpha = 0.5) +
+  stat_ellipse(size = 1)
+```
+
+# Multiple logistic regression
+
+```{r lm}
+mean_dark2$geno <- ifelse(mean_dark2$Genotype == "wt", 0, 1)
+
+x <- mean_dark2[,c("geno", vars)] %>%
+  mutate_at(all_of(vars), scale) # scaling variables for lda
+
+model <- glm(geno ~ ., family = binomial, data = x)
+
+anova(model, test = "Chisq")
+
+# paste("geno", paste(lda_vars, collapse = " + "), sep = " ~ ")
+```
 
 
 

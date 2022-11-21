@@ -1,0 +1,100 @@
+---
+title: "LME"
+author: "Angel Allen"
+date: "2022-11-20"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = FALSE)
+```
+
+### Packages
+
+```{r packages, message=F}
+# importing the data
+library(readxl) # import
+library(tidyverse) # import
+
+# visualisation
+library(ggplot2) # ggplot()
+library(ggpubr) # ggarrange()
+library(ggfortify)
+library(ggrepel)
+library(ggord) # ggord()
+library(GGally) # ggpairs()
+library(kableExtra)
+# library(esquisse)
+
+# data manipulation
+library(psych) #principal()
+library(rcompanion) # transformTukey()
+library(lme4) # lmer()
+
+theme_set(theme_bw()) # set ggplot to b/w
+# options(scipen = 100) # set to 0 to go back to scientific notation
+# rm(list = ls())
+```
+
+### Importing data
+
+```{r import}
+source("scripts/import.R")
+source("scripts/DE functions.R")
+source("scripts/graphs.R")
+
+bad_fish <- c("2.2-6.10", "56.2-6.10", "5.2-6.10", "71.4-7.10", "5.4-7.10")
+              # ,"38.4-7.10", "4.2-6.10") # last one just outlier (testing)
+
+raw_11 <- read_data("11-Oct-22") %>% subset(.$fish_id %in% grep("6.10", .$fish_id, value = T))
+
+raw_11 <- raw_11[!raw_11$fish_id %in% bad_fish,]
+
+raw_12 <- read_data("12-Oct-22") %>% subset(.$fish_id %in% grep("7.10", .$fish_id, value = T))
+
+raw_12 <- raw_12[!raw_12$fish_id %in% bad_fish,]
+
+raw_all <- bind_rows(raw_11, raw_12, .id = "Family")
+```
+
+```{r labels}
+labels <- read.csv("files/labels.csv")
+# labels[grep("Acceleration", labels$Feature),"units"] <- "mm/s$^2$"
+```
+
+# Data exploration
+
+```{r variables}
+expl <- colnames(raw_all)[c(1:8)]
+expl2 <- colnames(raw_all)[c(2:8)]
+vars <- colnames(raw_all)[-c(1:8)]
+```
+
+```{r cleveland plots}
+plots <- lapply(vars, plot_cdot, dat = raw_all)
+ggarrange(plotlist = plots, ncol = 2, common.legend = T)
+```
+
+### Notes
+
+1. Distance travelled (total and mean) - hom/het+wt separation in bin 4 and 5, hom+het/wt separation in bin 6-10, het drops lower than hom in bins 6, 9 and 10
+2. Distance travelled variance - homs generally lowest, hets, then wt. 
+
+```{r}
+x <- raw_all %>%
+  subset(Bin %in% c(8,9)) %>%
+  group_by(Family, fish_id, Genotype, Trial) %>%
+  summarise_if(is.numeric, mean)
+
+boxplot_data(x, "Dist_travelled_total")
+boxplot_data(x, "Mobility_mean")
+```
+
+
+

@@ -268,18 +268,20 @@ boxplot_data <- function(data, x, y, p = NULL, title = "Title") {
     # geom_jitter(aes(colour = Genotype), size = 2, alpha = 0.5) +
     geom_dotplot(aes(fill = Genotype), 
                  alpha = 0.25, binaxis = "y", 
-                 dotsize = 1, stackdir = "center",
-                 binwidth = 0.3) +
+                 dotsize = 0.6, stackdir = "center",
+                 binwidth = 13) +
     geom_boxplot(aes(fill = Genotype), alpha = 0.25, outlier.shape = NA) +
     scale_fill_viridis_d() +
     stat_pvalue_manual(p, step.increase = 0.1) +
-    annotate("text", x = "wt", y = 20, label = paste0("Mean: ", summary_11$wt[y, "Mean"])) +
-    annotate("text", x = "het", y = 20, label = paste0("Mean: ", summary_11$het[y, "Mean"])) +
-    annotate("text", x = "hom", y = 20, label = paste0("Mean: ", summary_11$hom[y, "Mean"])) +
+    annotate("text", x = "wt", y = 450, label = paste0("Mean: ", summary_11$wt[y, "Mean"])) +
+    annotate("text", x = "het", y = 450, label = paste0("Mean: ", summary_11$het[y, "Mean"])) +
+    annotate("text", x = "hom", y = 450, label = paste0("Mean: ", summary_11$hom[y, "Mean"])) +
     ggtitle(title)
 }
 
-dist_plot <- boxplot_data(dark_12, "Genotype", "Dist_travelled_total", tukey_plot[tukey_plot$Feature == "Dist_travelled_total",], "Total Distance Travelled")
+dist_plot <- boxplot_data(dark_12, "Genotype", "Mobility_total", tukey_plot[tukey_plot$Feature == "Mobility_total",], "Mobility_total")
+dist_plot
 
-ggsave("plots/dist_travelled.png", dist_plot, width = 3240, height = 2160, units = "px")
+# ggsave("plots/dist_travelled.png", dist_plot, width = 3240, height = 2160, units = "px")
 ```
+
