@@ -1,0 +1,31 @@
+---
+title: "Data exploration"
+author: "AA"
+date: "2025-02-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = FALSE)
+```
+
+I want to explore all of the datasets I collected way back when to prepare them for my thesis.
+
+```{r packages}
+library(tidyverse)
+```
+
+Importing data
+```{r}
+base_dir <- "~/Documents/repos/dnajc6-larval-behaviour1"
+
+datasets <- list.files(file.path(base_dir, "data"))
+datasets
+```
+
+There are 7 datasets to look at. They each have genotypes (metadata) and statistics for the whole trial or in time bins.
+
+```{r}
+
+```
+

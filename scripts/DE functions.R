@@ -1,10 +1,11 @@
-plot_histbox <- function(data, var, labels, wrap = NULL) {
+plot_histbox <- function(data, var, wrap = NULL) {
   a <- ggplot(data, aes(x = "", y = get(var))) +
     geom_boxplot(fill = "lightblue", color = "black") + 
     coord_flip() +
     theme_classic() + # removes grid behind plot
-    ylab(paste0(labels[labels$var == var, "Feature"], " (",
-            labels[labels$var == var, "units"], ")")) +
+    # ylab(paste0(labels[labels$var == var, "Feature"], " (",
+    #         labels[labels$var == var, "units"], ")")) +
+    ylab(var) +
     xlab("") +
     # ylim(min(data[,var]),max(data[,var])) +
     theme(axis.text.y=element_blank(),
@@ -16,7 +17,8 @@ plot_histbox <- function(data, var, labels, wrap = NULL) {
   b <- ggplot(data, aes(x = get(var), after_stat(density))) +
     geom_histogram(fill = "lightblue", color = "black", bins = 50, stat ="bin") +
     xlab("") +
-    ggtitle(labels[labels$var == var, "Feature"]) +
+    # ggtitle(labels[labels$var == var, "Feature"]) +
+    ggtitle(var) +
     facet_wrap(wrap)
   # xlim(min(data[,var]),max(data[,var]))
   

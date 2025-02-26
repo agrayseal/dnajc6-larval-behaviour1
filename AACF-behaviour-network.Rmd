@@ -84,6 +84,17 @@ raw_all <- full_join(raw_11, raw_12)
 # write_csv(raw_all, "processed/dnajc6 behaviour raw_all.csv")
 ```
 
+Genotype proportions
+```{r}
+meta <- raw_all %>%
+  select(fish_id, Genotype) %>%
+  mutate(family = str_split_i(fish_id, "-", 2)) %>%
+  unique()
+
+table(meta$Genotype, meta$family)
+```
+
+
 ## Summary
 
 Here I will be generating the summary statistics for the raw data.

@@ -35,11 +35,12 @@ library(rcompanion) # tukeyTransform()
 
 theme_set(theme_bw()) # set ggplot to b/w
 # rm(list = ls())
+base_dir <- "~/Documents/repos/dnajc6-larval-behaviour1"
 ```
 
 Importing data:
 ```{r import}
-source("scripts/import.R")
+source(file.path(base_dir, "scripts/import.R"))
 
 raw_7 <- read_data("11-Oct-22") %>% subset(.$fish_id %in% grep("2.10", .$fish_id, value = T))
 
@@ -95,9 +96,9 @@ do.call(cbind, lapply(raw_all[,c(feats)], summary)) %>%
 ### Plots
 
 ```{r dt plots}
-source("scripts/DE functions.R")
+source(file.path(base_dir, "scripts/DE functions.R"))
 
-lambdas <- rbind(get_lambda(raw_11), get_lambda(raw_12))
+lambdas <- rbind(get_lambda(raw_11, feats), get_lambda(raw_12, feats))
 
 lambdas %>% `rownames<-`(c("11 Oct", "12 Oct")) %>% kable() %>%
   kable_styling()
@@ -124,7 +125,7 @@ plots <- c(rbind(plots_11, plots_12))
 ggarrange(plotlist = plots, ncol = 2)
 ```
 
-The original plots showed an extreme right skew for the total, mean, and variance of the distance travelled (mm). A log(x+1) transformation made the distribution of total distance travelled much less skewed, and bimodal. The other two (mean and variance) were still severely right skewed with a log transformation, so I used `transformTukey()` to perform Tukey's Ladder of Powers. As this function takes a maximum sample size of 5,000, I ran it separately for the 11 and 12 Oct data. The mean distance travelled was `^0.25` and the variance `^0.2`.
+The original plots showed an extreme right skew for the total, mean, and variance of the distance travelled (mm). A log(x+1) transformation made the distribution of total distance travelled much less skewed, and bimodal. The other two (mean and variance) were still severely right skewed with a log transformation, so I used transformTukey() to perform Tukey's Ladder of Powers. As this function takes a maximum sample size of 5,000, I ran it separately for the 11 and 12 Oct data. The mean distance travelled was `^0.25` and the variance `^0.2`.
 
 Now I'm going to look at lattice graphs for each of the explanatory variables: genotype, (well) position, tray, trial/time, and bin.
 
@@ -174,7 +175,7 @@ light_bins <- c(1, 2, 3, 4, 5)
 raw_light_11 <- raw_11 %>% subset(Bin %in% light_bins)
 raw_light_12 <- raw_12 %>% subset(Bin %in% light_bins)
 
-lambdas <- rbind(getLambda(raw_light_11), getLambda(raw_light_12))
+lambdas <- rbind(get_lambda(raw_light_11, feats), get_lambda(raw_light_12, feats))
 
 lambdas %>% `rownames<-`(c("11 Oct", "12 Oct")) %>% kable() %>%
   kable_styling()
@@ -214,7 +215,7 @@ dark_bins <- c(6, 7, 8, 9, 10)
 raw_dark_11 <- raw_11 %>% subset(Bin %in% dark_bins)
 raw_dark_12 <- raw_12 %>% subset(Bin %in% dark_bins)
 
-lambdas <- rbind(getLambda(raw_dark_11), getLambda(raw_dark_12))
+lambdas <- rbind(get_lambda(raw_dark_11, feats), get_lambda(raw_dark_12, feats))
 
 lambdas %>% `rownames<-`(c("11 Oct", "12 Oct")) %>% kable() %>%
   kable_styling()
@@ -248,24 +249,24 @@ ggarrange(plotlist = plots_12, ncol = 3)
 
 ### Summary
 ```{r dt dark geno summary}
-get_summary <- function(data) {
- do.call(cbind, lapply(data[,c(feats)], summary))
-}
-
-dtdark_geno_11 <- group_split(dtdark_11, Genotype)
-
-lapply(dtdark_geno_11, get_summary) %>%
-  kable() %>% kable_styling()
+# get_summary <- function(data) {
+#  do.call(cbind, lapply(data[,c(feats)], summary))
+# }
+# 
+# dtdark_geno_11 <- group_split(dtdark_11, Genotype)
+# 
+# lapply(dtdark_geno_11, get_summary) %>%
+#   kable() %>% kable_styling()
 ```
 
 Pairplots to see the relationship between all variables.
 
 ```{r pairplots}
-variances <- colnames(raw_12)[grep("var", colnames(raw_12))]
-
-pvars <- colnames(raw_12)[!colnames(raw_12) %in% variances]
-
-pairs_12 <- pairs(raw_12[,pvars])
+# variances <- colnames(raw_12)[grep("var", colnames(raw_12))]
+# 
+# pvars <- colnames(raw_12)[!colnames(raw_12) %in% variances]
+# 
+# pairs_12 <- pairs(raw_12[,pvars])
 ```
 
 
