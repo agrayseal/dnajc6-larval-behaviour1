@@ -27,14 +27,14 @@ library(ggplot2) # ggplot()
 library(ggpubr) # ggarrange()
 library(ggfortify)
 library(ggrepel)
-library(ggord) # ggord()
-library(GGally) # ggpairs()
+# library(ggord) # ggord()
+# library(GGally) # ggpairs()
 library(kableExtra)
 # library(esquisse)
 
 # data manipulation
-library(psych) #principal()
-library(rcompanion) # transformTukey()
+# library(psych) #principal()
+# library(rcompanion) # transformTukey()
 library(lme4) # lmer()
 
 theme_set(theme_bw()) # set ggplot to b/w

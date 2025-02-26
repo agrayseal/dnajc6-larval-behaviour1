@@ -35,6 +35,8 @@ library(kableExtra)
 theme_set(theme_bw()) # set ggplot to b/w
 # options(scipen = 100) # set to 0 to go back to scientific notation
 # rm(list = ls())
+
+base_dir <- "~/Documents/repos/dnajc6-larval-behaviour1"
 ```
 
 # Introduction
@@ -292,7 +294,7 @@ mrclean <- mrclean %>%
 # Over time
 
 ```{r raw plots}
-source("scripts/graphs.R")
+source(file.path(base_dir, "scripts/graphs.R"))
 
 features <- colnames(raw_all)[-c(1:7)]
 
@@ -309,7 +311,7 @@ ggarrange(plotlist = plots_compare, ncol = 2, common.legend = T)
 ```{r processed plots}
 features <- colnames(mrclean)[-c(1:4)]
 
-plots_all <- lapply(features, plot_data, data = mrclean[!mrclean$Genotype == "het",] %>% na.omit())
+plots_all <- lapply(features, plot_data2, data = mrclean[!mrclean$Genotype == "het",] %>% na.omit())
 
 ggarrange(plotlist = plots_all, ncol = 2, common.legend = T)
 ```
@@ -323,7 +325,7 @@ ggarrange(plotlist = plots_all, ncol = 2, common.legend = T)
 ```
 
 ```{r}
-source("scripts/graphs.R")
+source(file.path(base_dir, "scripts/graphs.R"))
 data <- trm_all[!trm_all$Genotype == "het",] %>% droplevels() %>% na.omit()
 
 levels(data$Genotype) <- c("Wildtype", "Mutant")
